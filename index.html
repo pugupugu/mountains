@@ -15,11 +15,13 @@
     --line: #e3e0d8;
     --accent: #2f6b4f;
     --accent-soft: #e4efe8;
-    --done: #c2732e;
-    --h1: #9cc7a4; /* < 700m */
-    --h2: #4f9a6b; /* 700–1,099m */
-    --h3: #2f6b4f; /* 1,100–1,499m */
-    --h4: #173f2e; /* 1,500m+ */
+    --accent-deep: #173f2e;
+    --done: #2b4c7e;
+    /* 마커: 지도의 초록·베이지 위에서 잘 보이는 단풍 계열 */
+    --h1: #f4a259; /* < 700m */
+    --h2: #e76f2c; /* 700–1,099m */
+    --h3: #c0392b; /* 1,100–1,499m */
+    --h4: #7b1f2b; /* 1,500m+ */
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -87,11 +89,14 @@
     box-shadow: 0 8px 28px rgba(20, 40, 30, .15); display: none;
   }
   .detail.open { display: block; }
-  .d-head { padding: 18px 18px 14px; background: linear-gradient(160deg, var(--accent), var(--h4)); color: #fff; position: relative; }
+  .d-head { padding: 18px 18px 14px; background: linear-gradient(160deg, var(--accent), var(--accent-deep)); color: #fff; position: relative; }
   .d-head .close {
-    position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 50%;
-    border: 0; background: rgba(255,255,255,.15); color: #fff; font-size: 18px; cursor: pointer; line-height: 1;
+    /* z-index: 반투명(opacity) 텍스트가 버튼 위에 그려져 클릭을 가로채지 않도록 */
+    position: absolute; top: 10px; right: 10px; z-index: 2; width: 36px; height: 36px; border-radius: 50%;
+    border: 0; background: rgba(255,255,255,.18); color: #fff; font-size: 22px; cursor: pointer; line-height: 1;
   }
+  .d-head .close:hover { background: rgba(255,255,255,.32); }
+  .leaflet-interactive.mt-marker { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45)); }
   .d-head .tag { font-size: 11px; opacity: .8; }
   .d-head h2 { margin: 4px 0 2px; font-size: 24px; letter-spacing: -0.02em; }
   .d-head .loc { font-size: 13px; opacity: .85; }
@@ -115,6 +120,7 @@
   .btn.primary.is-done { background: var(--panel); color: var(--done); border-color: var(--done); }
   .note { font-size: 11px; color: var(--muted); line-height: 1.5; }
 
+  .d-body > * { min-width: 0; } /* 썸네일 줄이 카드 폭을 넓히지 않도록 */
   .gallery { margin: -16px -18px 0; }
   .g-main { position: relative; aspect-ratio: 16 / 10; background: var(--bg); cursor: zoom-in; overflow: hidden; }
   .g-main img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -316,7 +322,7 @@
 
   const markers = new Map();
   for (const m of mountains) {
-    const mk = L.circleMarker([m.lat, m.lng], markerStyle(m, false))
+    const mk = L.circleMarker([m.lat, m.lng], { ...markerStyle(m, false), className: "mt-marker" })
       .bindTooltip(`${esc(m.name)} · ${fmtH(m.h)}m`, { className: "mt-label", direction: "top", offset: [0, -6] })
       .on("click", () => select(m.id, { fly: false }))
       .addTo(map);
@@ -327,8 +333,8 @@
     const done = state.done.has(m.id);
     return {
       radius: active ? 11 : 6 + Math.min(m.h / 500, 3),
-      color: active ? "#ffffff" : done ? css("--done") : "#ffffff",
-      weight: active ? 3 : 1.5,
+      color: "#ffffff",
+      weight: active ? 3 : 2,
       fillColor: done ? css("--done") : heightColor(m.h),
       fillOpacity: 0.95,
     };
