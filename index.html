@@ -458,28 +458,27 @@
   // ---- 사진 (Wikimedia Commons) ----
   const MAX_USER_PHOTOS = 5; // 기본 사진이 없는 산에 올릴 수 있는 내 사진 수
   const baseOf = (m) => (typeof MOUNTAIN_IMAGES !== "undefined" && MOUNTAIN_IMAGES[m.name]) || [];
-  // 각 항목의 slot = 저장소에 기록되는 사진 순번
+  // 각 항목의 slot = 저장소에 기록되는 사진 순번.
+  // 0 ~ (기본 사진 수-1)번 칸은 기본 사진 자리(내 사진으로 교체 가능), 그 뒤 칸은 내가 추가한 사진 (합계 최대 5장)
   const photosOf = (m) => {
     const base = baseOf(m), ov = overrides.get(m.id) || new Map();
-    if (!base.length) {
-      return [...ov.entries()].filter(([slot]) => slot < MAX_USER_PHOTOS).sort((a, b) => a[0] - b[0]).map(([slot, o]) => ({ ...o, slot }));
-    }
     const ps = base.map((p, slot) => ({ ...p, slot }));
     for (const [slot, o] of ov) if (slot < ps.length) ps[slot] = { ...o, slot };
+    const extra = [...ov.entries()].filter(([slot]) => slot >= base.length && slot < MAX_USER_PHOTOS).sort((a, b) => a[0] - b[0]);
+    for (const [slot, o] of extra) ps.push({ ...o, slot });
     return ps;
   };
   const creditHtml = (p) => p.mine
     ? `내 사진`
     : `사진: ${esc(p.author)}${p.license ? " · " + esc(p.license) : ""} · <a href="${esc(p.page)}" target="_blank" rel="noopener">Wikimedia Commons</a>`;
   const coverInner = (m, ps, idx) => {
-    if (!baseOf(m).length) { // 되돌릴 '기본 사진'이 없으므로 추가·삭제만 제공
-      const add = ps.length < MAX_USER_PHOTOS
-        ? `<label class="link-btn">📷 사진 추가 (${ps.length}/${MAX_USER_PHOTOS})<input type="file" accept="image/*" multiple hidden data-act="add"></label>`
-        : `사진 ${MAX_USER_PHOTOS}/${MAX_USER_PHOTOS}장 (가득 참)`;
-      return add + (ps.length ? ` · <button class="link-btn" data-act="delphoto">이 사진 삭제</button>` : "");
-    }
-    return `<label class="link-btn">📷 ${ps.length > 1 ? "이 사진 변경" : "사진 변경"}<input type="file" accept="image/*" hidden data-act="cover"></label>${ps[idx]?.mine
-      ? ` · <button class="link-btn" data-act="resetcover">기본 사진으로</button>` : ""}`;
+    const canAdd = ps.length < MAX_USER_PHOTOS && baseOf(m).length < MAX_USER_PHOTOS;
+    const parts = [canAdd
+      ? `<label class="link-btn">📷 사진 추가 (${ps.length}/${MAX_USER_PHOTOS})<input type="file" accept="image/*" multiple hidden data-act="add"></label>`
+      : `사진 ${ps.length}/${MAX_USER_PHOTOS}장 (가득 참)`];
+    if (ps[idx]) parts.push(`<label class="link-btn">이 사진 교체<input type="file" accept="image/*" hidden data-act="cover"></label>`);
+    if (ps[idx]?.mine) parts.push(`<button class="link-btn" data-act="delphoto">내 사진 삭제</button>`);
+    return parts.join(" · ");
   };
   const coverCtl = (m, ps = photosOf(m), idx = 0) => `<div class="credit cover-ctl">${coverInner(m, ps, idx)}</div>`;
   let photoIdx = 0;
@@ -487,7 +486,7 @@
   function galleryHtml(m) {
     const ps = photosOf(m);
     photoIdx = 0;
-    if (!ps.length) return `<div class="gallery"><div class="no-photo">자유 라이선스 사진을 찾지 못했습니다.<br>‘사진 추가’로 내 사진을 최대 ${MAX_USER_PHOTOS}장까지 올리거나 ‘사진 더 보기’로 확인하세요.</div>${coverCtl(m)}</div>`;
+    if (!ps.length) return `<div class="gallery"><div class="no-photo">자유 라이선스 사진을 찾지 못했습니다.<br>‘사진 추가’로 내 사진을 최대 ${MAX_USER_PHOTOS}장까지 올리거나(한 번에 여러 장 가능) ‘사진 더 보기’로 확인하세요.</div>${coverCtl(m)}</div>`;
     return `<div class="gallery">
       <div class="g-main" data-act="zoom"><img src="${esc(ps[0].thumb)}" alt="${esc(m.name)} 사진 1"><span class="g-count">1 / ${ps.length}</span></div>
       ${ps.length > 1 ? `<div class="g-thumbs">${ps.map((p, i) =>
@@ -542,16 +541,11 @@
     const t = e.target.closest("[data-photo]");
     if (t) { showPhoto(+t.dataset.photo); return; }
     if (e.target.closest('[data-act="zoom"]')) { openLightbox(); return; }
-    if (e.target.closest('[data-act="resetcover"]')) {
-      const id = state.selected, slot = photosOf(mountains.find((x) => x.id === id))[photoIdx]?.slot ?? photoIdx;
-      resetPhoto(id, slot).then(() => refreshGallery(id, photoIdx)).catch(() => alert("사진을 되돌리지 못했습니다. 네트워크를 확인하세요."));
-      return;
-    }
     if (e.target.closest('[data-act="delphoto"]')) {
       const id = state.selected, ps = photosOf(mountains.find((x) => x.id === id)), cur = ps[photoIdx];
       if (!cur || !confirm("이 사진을 삭제할까요?")) return;
       resetPhoto(id, cur.slot)
-        .then(() => refreshGallery(id, Math.max(0, Math.min(photoIdx, ps.length - 2))))
+        .then(() => refreshGallery(id, Math.max(0, Math.min(photoIdx, photosOf(mountains.find((x) => x.id === id)).length - 1))))
         .catch(() => alert("사진을 삭제하지 못했습니다. 네트워크를 확인하세요."));
       return;
     }
@@ -583,7 +577,8 @@
       const id = state.selected, files = [...e.target.files];
       e.target.value = "";
       const used = new Set((overrides.get(id) || new Map()).keys());
-      const free = [...Array(MAX_USER_PHOTOS).keys()].filter((s) => !used.has(s));
+      const baseN = baseOf(mountains.find((x) => x.id === id)).length;
+      const free = [...Array(MAX_USER_PHOTOS).keys()].filter((s) => s >= baseN && !used.has(s));
       if (!free.length) { alert(`사진은 최대 ${MAX_USER_PHOTOS}장까지 올릴 수 있어요.`); return; }
       if (files.length > free.length) alert(`사진은 최대 ${MAX_USER_PHOTOS}장까지예요. 앞의 ${free.length}장만 올립니다.`);
       const ctl = $detail.querySelector(".cover-ctl");
